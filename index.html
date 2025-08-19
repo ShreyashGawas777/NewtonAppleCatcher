@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newton's Apple Catcher</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98FB98 70%, #8B4513 100%);
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        #gameContainer {
+            position: relative;
+            border: 4px solid #654321;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            background: #87CEEB;
+        }
+        
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .ui-element {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            color: #2c3e50;
+            padding: 10px 18px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            text-align: center;
+            min-width: 120px;
+            transition: all 0.3s ease;
+        }
+        
+        .ui-element:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+        
+        .score-element {
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.9), rgba(255, 235, 59, 0.9));
+            color: #f57f17;
+            border-color: rgba(255, 193, 7, 0.5);
+        }
+        
+        .wave-element {
+            background: linear-gradient(135deg, rgba(103, 58, 183, 0.9), rgba(156, 39, 176, 0.9));
+            color: white;
+            border-color: rgba(103, 58, 183, 0.5);
+        }
+        
+        .apple-element {
+            background: linear-gradient(135deg, rgba(244, 67, 54, 0.9), rgba(233, 30, 99, 0.9));
+            color: white;
+            border-color: rgba(244, 67, 54, 0.5);
+        }
+        
+        .highscore-element {
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.9), rgba(139, 195, 74, 0.9));
+            color: white;
+            border-color: rgba(76, 175, 80, 0.5);
+            animation: glow 3s ease-in-out infinite;
+        }
+        
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+            50% { box-shadow: 0 8px 32px rgba(76, 175, 80, 0.4); }
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            display: none;
+            z-index: 20;
+            border: 3px solid #FF4444;
+        }
+        
+        button {
+            padding: 12px 25px;
+            font-size: 18px;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            background: linear-gradient(45deg, #45a049, #4CAF50);
+        }
+        
+        #instructions {
+            max-width: 800px;
+            text-align: center;
+            margin: 20px;
+            color: #333;
+            background: rgba(255,255,255,0.9);
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <h1>🍎 Newton's Apple Catcher 🚀</h1>
+        <p><strong>Mission:</strong> Travel back in time to save Newton from apples! Use ARROW KEYS or WASD to pilot your time machine and catch falling apples before they hit Newton. Avoid the deadly birds!</p>
+        <p><strong>Controls:</strong> ←→↑↓ or WASD for full 4-directional movement</p>
+        <p><strong>Warning:</strong> Birds are DEADLY! One touch = Game Over!</p>
+    </div>
+    
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="ui">
+            <div class="ui-element highscore-element">High: <span id="highscore">0</span></div>
+            <div class="ui-element score-element">Score: <span id="score">0</span></div>
+            <div class="ui-element wave-element">Wave: <span id="wave">1</span></div>
+            <div class="ui-element apple-element">Apples: <span id="applesCaught">0</span></div>
+        </div>
+        <div id="gameOver">
+            <h2>Game Over!</h2>
+            <p id="gameOverReason">Newton got bonked by an apple! 🍎💥</p>
+            <p>Final Score: <span id="finalScore">0</span></p>
+            <p>Apples Saved: <span id="finalApples">0</span></p>
+            <button onclick="restartGame()">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        // Game Canvas Setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game State
+        let gameRunning = true;
+        let score = 0;
+        let wave = 1;
+        let applesCaught = 0;
+        let lastTime = 0;
+        let highScore = parseInt(localStorage.getItem('newtonAppleHighScore') || '0');
+        
+        // Input handling
+        const keys = {};
+        
+        // Game Objects
+        const player = {
+            x: 400,
+            y: 300,
+            width: 60,
+            height: 40,
+            speed: 6
+        };
+        
+        const newton = {
+            x: 400,
+            y: 480,
+            width: 40,
+            height: 60,
+            speed: 0.5,
+            direction: 1,
+            targetX: 400,
+            baseSpeed: 0.5
+        };
+        
+        const papers = [];
+        const apples = [];
+        const birds = [];
+        const trees = [];
+        
+        // Initialize trees positions - much taller with dense foliage
+        for (let i = 0; i < 6; i++) {
+            trees.push({
+                x: 50 + i * 130,
+                y: 50, // Much higher for tall trees
+                width: 100,
+                height: 160,
+                trunkHeight: 400, // Very long trunk
+                crownLayers: 4 // Multiple dense layers
+            });
+        }
+        
+        // Game Classes
+        class Apple {
+            constructor(treeIndex) {
+                const tree = trees[treeIndex];
+                // Apples spawn from within the tree crown area
+                this.x = tree.x + 20 + Math.random() * 60;
+                this.y = tree.y + 40 + Math.random() * 40; // From within the leaves
+                this.width = 20;
+                this.height = 20;
+                this.speed = 2 + wave * 0.5;
+                this.caught = false;
+                this.treeIndex = treeIndex;
+            }
+            
+            update() {
+                this.y += this.speed;
+            }
+            
+            draw() {
+                // Apple body (red with pixel style)
+                ctx.fillStyle = '#FF4444';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.fillStyle = '#CC2222';
+                ctx.fillRect(this.x + 2, this.y + 2, this.width - 4, this.height - 4);
+                
+                // Apple highlight
+                ctx.fillStyle = '#FF6666';
+                ctx.fillRect(this.x + 4, this.y + 4, 8, 8);
+                
+                // Apple stem
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(this.x + 8, this.y - 4, 4, 6);
+                
+                // Apple leaf
+                ctx.fillStyle = '#228B22';
+                ctx.fillRect(this.x + 12, this.y - 2, 6, 4);
+            }
+        }
+        
+        class Bird {
+            constructor() {
+                this.x = Math.random() > 0.5 ? -30 : canvas.width + 30;
+                this.y = 80 + Math.random() * 350; // Can fly at various heights
+                this.width = 25;
+                this.height = 15;
+                this.speed = 1.5 + wave * 0.3;
+                this.direction = this.x < 0 ? 1 : -1;
+                this.wingFlap = 0;
+                this.verticalDirection = (Math.random() - 0.5) * 2;
+                this.verticalSpeed = 0.5 + Math.random() * 1;
+            }
+            
+            update() {
+                this.x += this.speed * this.direction;
+                this.y += this.verticalDirection * this.verticalSpeed;
+                this.wingFlap += 0.3;
+                
+                // Change vertical direction occasionally
+                if (Math.random() < 0.03) {
+                    this.verticalDirection = (Math.random() - 0.5) * 2;
+                }
+                
+                // Keep birds within reasonable bounds
+                if (this.y < 60) this.verticalDirection = 1;
+                if (this.y > 450) this.verticalDirection = -1;
+            }
+            
+            draw() {
+                // Bird body (dark gray)
+                ctx.fillStyle = '#444444';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                
+                // Bird head
+                ctx.fillStyle = '#333333';
+                ctx.fillRect(this.x + (this.direction > 0 ? 20 : -5), this.y - 5, 10, 10);
+                
+                // Wing animation
+                const wingOffset = Math.sin(this.wingFlap) * 3;
+                ctx.fillStyle = '#222222';
+                ctx.fillRect(this.x + 5, this.y - 3 + wingOffset, 15, 8);
+                
+                // Eye (glowing red for danger)
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(this.x + (this.direction > 0 ? 22 : -3), this.y - 3, 3, 3);
+                
+                // Danger glow around bird
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+                ctx.fillRect(this.x - 5, this.y - 8, this.width + 10, this.height + 16);
+            }
+        }
+        
+        class Paper {
+            constructor() {
+                this.x = newton.x + Math.random() * 100 - 50;
+                this.y = newton.y - 20;
+                this.width = 15;
+                this.height = 20;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = -2 - Math.random() * 2;
+                this.life = 180;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1;
+                this.life--;
+                
+                if (this.life > 100) {
+                    newton.targetX = this.x;
+                }
+            }
+            
+            draw() {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(this.x, this.y, this.width, this.height);
+                
+                // Paper lines
+                ctx.strokeStyle = '#CCCCCC';
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + 2, this.y + 5 + i * 5);
+                    ctx.lineTo(this.x + this.width - 2, this.y + 5 + i * 5);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        // Drawing Functions
+        function drawBackground() {
+            // Sky gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(0.7, '#98FB98');
+            gradient.addColorStop(1, '#8B4513');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Clouds
+            ctx.fillStyle = '#FFFFFF';
+            for (let i = 0; i < 4; i++) {
+                const x = 100 + i * 200;
+                const y = 30 + Math.sin(Date.now() * 0.001 + i) * 10;
+                drawCloud(x, y);
+            }
+            
+            // Sun
+            ctx.fillStyle = '#FFD700';
+            ctx.fillRect(720, 20, 40, 40);
+            ctx.fillStyle = '#FFA500';
+            ctx.fillRect(722, 22, 36, 36);
+            
+            // Sun rays
+            ctx.fillStyle = '#FFD700';
+            for (let i = 0; i < 8; i++) {
+                const angle = (i * Math.PI) / 4;
+                const x = 740 + Math.cos(angle) * 25;
+                const y = 40 + Math.sin(angle) * 25;
+                ctx.fillRect(x - 2, y - 2, 4, 4);
+            }
+        }
+        
+        function drawCloud(x, y) {
+            ctx.fillRect(x, y, 60, 20);
+            ctx.fillRect(x - 10, y + 5, 80, 15);
+            ctx.fillRect(x + 10, y - 5, 40, 25);
+        }
+        
+        function drawTrees() {
+            const groundY = canvas.height - 80;
+            
+            trees.forEach((tree, index) => {
+                // Long coconut-style trunk that reaches the ground
+                const trunkX = tree.x + 45;
+                const trunkWidth = 20;
+                const trunkStartY = tree.y + tree.height;
+                const trunkEndY = groundY;
+                
+                // Main trunk
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(trunkX, trunkStartY, trunkWidth, trunkEndY - trunkStartY);
+                
+                // Trunk shading
+                ctx.fillStyle = '#A0522D';
+                ctx.fillRect(trunkX + 2, trunkStartY, trunkWidth - 4, trunkEndY - trunkStartY);
+                
+                // Detailed trunk texture rings
+                ctx.fillStyle = '#654321';
+                for (let y = trunkStartY; y < trunkEndY; y += 20) {
+                    ctx.fillRect(trunkX - 3, y, trunkWidth + 6, 5);
+                    ctx.fillRect(trunkX + 2, y + 10, trunkWidth - 4, 2);
+                }
+                
+                // Trunk knots and natural imperfections
+                ctx.fillStyle = '#5D4037';
+                for (let y = trunkStartY + 15; y < trunkEndY; y += 35) {
+                    ctx.fillRect(trunkX + trunkWidth, y, 8, 10);
+                    ctx.fillRect(trunkX - 8, y + 18, 8, 12);
+                    ctx.fillRect(trunkX + 5, y + 25, 6, 4);
+                }
+                
+                // Dense, multi-layered tree crown
+                for (let layer = 0; layer < tree.crownLayers; layer++) {
+                    const layerOffset = layer * 15;
+                    const layerSize = tree.width - layerOffset;
+                    const layerHeight = tree.height - layerOffset;
+                    
+                    // Base layer
+                    ctx.fillStyle = layer === 0 ? '#1B5E20' : '#2E7D32';
+                    ctx.fillRect(tree.x + layerOffset/2, tree.y + layerOffset/2, layerSize, layerHeight);
+                    
+                    // Middle layer
+                    ctx.fillStyle = layer === 0 ? '#388E3C' : '#4CAF50';
+                    ctx.fillRect(tree.x + layerOffset/2 + 5, tree.y + layerOffset/2 + 5, layerSize - 10, layerHeight - 10);
+                    
+                    // Top layer
+                    ctx.fillStyle = layer === 0 ? '#66BB6A' : '#81C784';
+                    ctx.fillRect(tree.x + layerOffset/2 + 10, tree.y + layerOffset/2 + 10, layerSize - 20, layerHeight - 20);
+                    
+                    // Dense foliage texture
+                    ctx.fillStyle = '#1B5E20';
+                    for (let i = 0; i < 15; i++) {
+                        const px = tree.x + layerOffset/2 + 5 + Math.random() * (layerSize - 10);
+                        const py = tree.y + layerOffset/2 + 5 + Math.random() * (layerHeight - 10);
+                        ctx.fillRect(px, py, 6, 6);
+                    }
+                }
+                
+                // Apple attachment points (where apples hang)
+                ctx.fillStyle = '#8B4513';
+                for (let i = 0; i < 8; i++) {
+                    const appleX = tree.x + 15 + Math.random() * 70;
+                    const appleY = tree.y + 60 + Math.random() * 60;
+                    ctx.fillRect(appleX, appleY, 2, 8);
+                }
+            });
+        }
+        
+        function drawGround() {
+            const groundY = canvas.height - 80;
+            
+            // Grass surface
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, groundY, canvas.width, 20);
+            
+            // Dirt layers
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, groundY + 20, canvas.width, 60);
+            
+            // Dirt texture
+            ctx.fillStyle = '#654321';
+            for (let x = 0; x < canvas.width; x += 20) {
+                for (let y = groundY + 20; y < canvas.height; y += 20) {
+                    if (Math.random() > 0.7) {
+                        ctx.fillRect(x + Math.random() * 10, y + Math.random() * 10, 8, 8);
+                    }
+                }
+            }
+            
+            // Grass blades
+            ctx.fillStyle = '#32CD32';
+            for (let i = 0; i < canvas.width; i += 12) {
+                ctx.fillRect(i + Math.random() * 8, groundY - 5, 3, 8);
+                ctx.fillRect(i + 5 + Math.random() * 5, groundY - 3, 2, 6);
+            }
+        }
+        
+        function drawNewton() {
+            // Based on the reference image - scholarly figure with period clothing
+            
+            // Newton's body (brown coat)
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(newton.x, newton.y, newton.width, 50);
+            
+            // Coat details and trim
+            ctx.fillStyle = '#A0522D';
+            ctx.fillRect(newton.x + 2, newton.y + 2, newton.width - 4, 46);
+            
+            // Coat buttons
+            ctx.fillStyle = '#FFD700';
+            for (let i = 0; i < 4; i++) {
+                ctx.fillRect(newton.x + 18, newton.y + 8 + i * 10, 4, 4);
+            }
+            
+            // Newton's head
+            ctx.fillStyle = '#FDBCB4';
+            ctx.fillRect(newton.x + 5, newton.y - 25, 30, 30);
+            
+            // Newton's iconic long curly hair (grayish-white)
+            ctx.fillStyle = '#F5F5F5';
+            ctx.fillRect(newton.x + 2, newton.y - 35, 36, 25);
+            ctx.fillRect(newton.x - 2, newton.y - 30, 44, 20);
+            ctx.fillRect(newton.x - 8, newton.y - 25, 56, 15);
+            
+            // Hair curls and texture
+            ctx.fillStyle = '#E8E8E8';
+            for (let i = 0; i < 6; i++) {
+                const hx = newton.x - 5 + i * 8;
+                const hy = newton.y - 30 + Math.sin(i) * 5;
+                ctx.fillRect(hx, hy, 6, 10);
+            }
+            
+            // Newton's face features
+            ctx.fillStyle = '#000000';
+            // Eyes
+            ctx.fillRect(newton.x + 12, newton.y - 18, 4, 4);
+            ctx.fillRect(newton.x + 24, newton.y - 18, 4, 4);
+            // Eyebrows
+            ctx.fillRect(newton.x + 10, newton.y - 22, 8, 2);
+            ctx.fillRect(newton.x + 22, newton.y - 22, 8, 2);
+            // Nose
+            ctx.fillStyle = '#D2B48C';
+            ctx.fillRect(newton.x + 18, newton.y - 12, 4, 6);
+            // Mouth
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(newton.x + 15, newton.y - 8, 10, 3);
+            
+            // Newton's green waistcoat
+            ctx.fillStyle = '#6B8E23';
+            ctx.fillRect(newton.x + 8, newton.y + 5, 24, 35);
+            ctx.fillStyle = '#9ACD32';
+            ctx.fillRect(newton.x + 10, newton.y + 7, 20, 31);
+            
+            // Waistcoat details
+            ctx.fillStyle = '#556B2F';
+            ctx.fillRect(newton.x + 8, newton.y + 5, 24, 3);
+            ctx.fillRect(newton.x + 19, newton.y + 5, 2, 35);
+            
+            // Vest buttons
+            ctx.fillStyle = '#FFD700';
+            for (let i = 0; i < 3; i++) {
+                ctx.fillRect(newton.x + 17, newton.y + 12 + i * 8, 3, 3);
+                ctx.fillRect(newton.x + 22, newton.y + 12 + i * 8, 3, 3);
+            }
+            
+            // Newton's arms
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(newton.x - 12, newton.y + 10, 15, 30);
+            ctx.fillRect(newton.x + 37, newton.y + 10, 15, 30);
+            
+            // Hands
+            ctx.fillStyle = '#FDBCB4';
+            ctx.fillRect(newton.x - 10, newton.y + 35, 10, 10);
+            ctx.fillRect(newton.x + 40, newton.y + 35, 10, 10);
+            
+            // Newton's legs (dark breeches)
+            ctx.fillStyle = '#2F4F4F';
+            ctx.fillRect(newton.x + 8, newton.y + 45, 12, 25);
+            ctx.fillRect(newton.x + 20, newton.y + 45, 12, 25);
+            
+            // Stockings
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(newton.x + 8, newton.y + 60, 12, 8);
+            ctx.fillRect(newton.x + 20, newton.y + 60, 12, 8);
+            
+            // Period shoes with buckles
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(newton.x + 6, newton.y + 65, 16, 8);
+            ctx.fillRect(newton.x + 18, newton.y + 65, 16, 8);
+            
+            // Shoe buckles
+            ctx.fillStyle = '#C0C0C0';
+            ctx.fillRect(newton.x + 10, newton.y + 67, 4, 4);
+            ctx.fillRect(newton.x + 22, newton.y + 67, 4, 4);
+        }
+        
+        function drawPlayer() {
+            // Time machine base (enhanced metallic design)
+            ctx.fillStyle = '#C0C0C0';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.fillStyle = '#A9A9A9';
+            ctx.fillRect(player.x + 2, player.y + 2, player.width - 4, player.height - 4);
+            
+            // Time machine rivets and panels
+            ctx.fillStyle = '#696969';
+            for (let i = 0; i < 4; i++) {
+                ctx.fillRect(player.x + 10 + i * 12, player.y + 5, 3, 3);
+                ctx.fillRect(player.x + 10 + i * 12, player.y + 32, 3, 3);
+            }
+            
+            // Energy core (animated glow)
+            const glowIntensity = 0.7 + Math.sin(Date.now() * 0.008) * 0.3;
+            ctx.fillStyle = `rgba(65, 105, 225, ${glowIntensity})`;
+            ctx.fillRect(player.x + 23, player.y + 13, 14, 14);
+            ctx.fillStyle = '#4169E1';
+            ctx.fillRect(player.x + 25, player.y + 15, 10, 10);
+            
+            // Player silhouette
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(player.x + 15, player.y + 5, 30, 25);
+            
+            // Pilot details
+            ctx.fillStyle = '#FFE4B5';
+            ctx.fillRect(player.x + 25, player.y + 8, 10, 8);
+            ctx.fillStyle = '#000080';
+            ctx.fillRect(player.x + 20, player.y + 16, 20, 12);
+            
+            // Enhanced basket
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(player.x + 5, player.y + 35, 50, 20);
+            ctx.strokeStyle = '#654321';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(player.x + 5, player.y + 35, 50, 20);
+            
+            // Basket weave pattern
+            ctx.strokeStyle = '#A0522D';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 6; i++) {
+                ctx.beginPath();
+                ctx.moveTo(player.x + 10 + i * 7, player.y + 35);
+                ctx.lineTo(player.x + 10 + i * 7, player.y + 55);
+                ctx.stroke();
+            }
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(player.x + 5, player.y + 40 + i * 5);
+                ctx.lineTo(player.x + 55, player.y + 40 + i * 5);
+                ctx.stroke();
+            }
+        }
+        
+        // Collision Detection
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+        
+        // Game Logic
+        function spawnApple() {
+            if (Math.random() < 0.03 + wave * 0.01) {
+                const treeIndex = Math.floor(Math.random() * trees.length);
+                apples.push(new Apple(treeIndex));
+            }
+        }
+        
+        function spawnBird() {
+            // Birds spawn less frequently at start, more with higher scores
+            const birdChance = Math.max(0.002, Math.min(0.02, score * 0.00005 + 0.002));
+            if (Math.random() < birdChance) {
+                birds.push(new Bird());
+            }
+        }
+        
+        function spawnPaper() {
+            if (Math.random() < 0.015) {
+                papers.push(new Paper());
+            }
+        }
+        
+        function updateNewton() {
+            // Newton speed increases with score (starts slow, gets faster)
+            newton.speed = newton.baseSpeed + (score * 0.002);
+            
+            // Newton follows papers or moves randomly
+            const dx = newton.targetX - newton.x;
+            if (Math.abs(dx) > 5) {
+                newton.x += Math.sign(dx) * newton.speed;
+            } else {
+                // Random movement when no papers
+                if (Math.random() < 0.025) {
+                    newton.targetX = 100 + Math.random() * 600;
+                }
+            }
+            
+            // Keep Newton on screen
+            newton.x = Math.max(50, Math.min(canvas.width - 90, newton.x));
+        }
+        
+        function updatePlayer() {
+            // Player movement - responsive 4-directional control
+            const moveSpeed = 6;
+            
+            if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+                player.x -= moveSpeed;
+            }
+            if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+                player.x += moveSpeed;
+            }
+            if (keys['ArrowUp'] || keys['w'] || keys['W']) {
+                player.y -= moveSpeed;
+            }
+            if (keys['ArrowDown'] || keys['s'] || keys['S']) {
+                player.y += moveSpeed;
+            }
+            
+            // Keep player on screen
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+            player.y = Math.max(0, Math.min(canvas.height - 120, player.y));
+        }
+        
+        function updateGame() {
+            if (!gameRunning) return;
+            
+            spawnApple();
+            spawnBird();
+            spawnPaper();
+            
+            updatePlayer();
+            updateNewton();
+            
+            // Update apples
+            for (let i = apples.length - 1; i >= 0; i--) {
+                const apple = apples[i];
+                apple.update();
+                
+                // Check collision with player basket (larger basket area)
+                if (checkCollision(apple, {
+                    x: player.x + 5,
+                    y: player.y + 35,
+                    width: 50,
+                    height: 20
+                })) {
+                    apples.splice(i, 1);
+                    score += 10;
+                    applesCaught++;
+                    
+                    // Update high score
+                    if (score > highScore) {
+                        highScore = score;
+                        localStorage.setItem('newtonAppleHighScore', highScore.toString());
+                    }
+                    continue;
+                }
+                
+                // Check collision with Newton
+                if (checkCollision(apple, newton)) {
+                    gameOver('apple');
+                    return;
+                }
+                
+                // Remove apples that hit the ground
+                if (apple.y > canvas.height - 100) {
+                    apples.splice(i, 1);
+                }
+            }
+            
+            // Update birds (DEADLY!)
+            for (let i = birds.length - 1; i >= 0; i--) {
+                const bird = birds[i];
+                bird.update();
+                
+                // Check collision with player - INSTANT DEATH!
+                if (checkCollision(bird, player)) {
+                    gameOver('bird');
+                    return;
+                }
+                
+                // Remove birds that are off screen
+                if (bird.x < -50 || bird.x > canvas.width + 50) {
+                    birds.splice(i, 1);
+                }
+            }
+            
+            // Update papers
+            for (let i = papers.length - 1; i >= 0; i--) {
+                const paper = papers[i];
+                paper.update();
+                
+                if (paper.life <= 0 || paper.y > canvas.height) {
+                    papers.splice(i, 1);
+                }
+            }
+            
+            // Wave progression
+            if (score > wave * 250) {
+                wave++;
+                score += 75; // Bonus for surviving wave
+                
+                // Update high score
+                if (score > highScore) {
+                    highScore = score;
+                    localStorage.setItem('newtonAppleHighScore', highScore.toString());
+                }
+            }
+        }
+        
+        function drawGame() {
+            drawBackground();
+            drawGround();
+            drawTrees();
+            
+            // Draw game objects
+            papers.forEach(paper => paper.draw());
+            apples.forEach(apple => apple.draw());
+            birds.forEach(bird => bird.draw());
+            
+            drawNewton();
+            drawPlayer();
+        }
+        
+        function gameOver(reason) {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalApples').textContent = applesCaught;
+            
+            // Update game over message based on how player died
+            const gameOverReason = document.getElementById('gameOverReason');
+            if (reason === 'bird') {
+                gameOverReason.innerHTML = 'A deadly bird struck your time machine! 🐦💥';
+            } else {
+                gameOverReason.innerHTML = 'Newton got bonked by an apple! 🍎💥';
+            }
+            
+            document.getElementById('gameOver').style.display = 'block';
+        }
+        
+        function restartGame() {
+            gameRunning = true;
+            score = 0;
+            wave = 1;
+            applesCaught = 0;
+            
+            // Reset positions
+            player.x = 400;
+            player.y = 300;
+            newton.x = 400;
+            newton.targetX = 400;
+            newton.speed = newton.baseSpeed;
+            
+            // Clear arrays
+            apples.length = 0;
+            birds.length = 0;
+            papers.length = 0;
+            
+            document.getElementById('gameOver').style.display = 'none';
+        }
+        
+        // Game Loop
+        function gameLoop(currentTime) {
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+            
+            updateGame();
+            drawGame();
+            
+            // Update UI with dynamic values
+            document.getElementById('score').textContent = score;
+            document.getElementById('wave').textContent = wave;
+            document.getElementById('applesCaught').textContent = applesCaught;
+            document.getElementById('highscore').textContent = highScore;
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Event Listeners
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D'].includes(e.key)) {
+                e.preventDefault();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+            if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D'].includes(e.key)) {
+                e.preventDefault();
+            }
+        });
+        
+        // Touch controls for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                const canvasX = (touch.clientX - rect.left) * (canvas.width / rect.width);
+                const canvasY = (touch.clientY - rect.top) * (canvas.height / rect.height);
+                
+                player.x = canvasX - player.width / 2;
+                player.y = canvasY - player.height / 2;
+            }
+        });
+        
+        // Initialize and start game
+        function initGame() {
+            // Load high score
+            document.getElementById('highscore').textContent = highScore;
+            
+            // Spawn initial paper
+            papers.push(new Paper());
+            
+            // Start game loop
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Start the game
+        initGame();
+    </script>
+</body>
+</html>
